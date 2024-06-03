@@ -58,4 +58,7 @@ const (
 	IF     = "IF"
 	ELSE   = "ELSE"
 	STRING = "STRING"
+
+	LSB = "["
+	RSB = "]"
 )

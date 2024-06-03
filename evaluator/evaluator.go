@@ -84,6 +84,24 @@ func Eval(node ast.Node, env *object.Enviroment) object.Object {
 		return applyFunction(function, params)
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
+
+	case *ast.Array:
+		ele := evalExpressions(node.Items, env)
+		if len(ele) == 1 && isError(ele[0]) {
+			return ele[0]
+		}
+		return &object.Array{Elements: ele}
+	case *ast.IndexExpression:
+		leftexp := Eval(node.LeftExpression, env)
+		index := Eval(node.Index, env)
+		if isError(leftexp) {
+			return leftexp
+		}
+		if isError(index) {
+			return index
+		}
+		return evalIndexExpression(leftexp, index)
+
 	}
 
 	return nil
@@ -94,6 +112,26 @@ func nativeBoolObject(input bool) object.Object {
 		return TRUE
 	}
 	return FALSE
+}
+
+func evalIndexExpression(left object.Object, index object.Object) object.Object {
+	switch {
+	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
+		return evalArrayIndexExpression(left, index)
+	default:
+		return newError("index operator not supported: %s", left.Type())
+	}
+}
+
+func evalArrayIndexExpression(array object.Object, index object.Object) object.Object {
+	arrayObj := array.(*object.Array)
+	idx := index.(*object.Integer).Value
+	max := int64(len(arrayObj.Elements) - 1)
+	if idx < 0 || idx > max {
+		return NULL
+	}
+
+	return arrayObj.Elements[idx]
 }
 
 func evalProgram(program *ast.Program, env *object.Enviroment) object.Object {
@@ -231,11 +269,12 @@ func evalStatements(stmts []ast.Statement, env *object.Enviroment) object.Object
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Enviroment) object.Object {
-	val, ok := env.Get(node.Value)
-	if !ok {
-		return newError("identifier not found: %s", node.Value)
+	if val, ok := env.Get(node.Value); ok {
+		return val
+	} else if val, ok := builtins[node.Value]; ok {
+		return val
 	}
-	return val
+	return newError("identifier not found: %s", node.Value)
 }
 
 func evalExpressions(exps []ast.Expression, env *object.Enviroment) []object.Object {
@@ -251,21 +290,27 @@ func evalExpressions(exps []ast.Expression, env *object.Enviroment) []object.Obj
 }
 
 func applyFunction(fn object.Object, params []object.Object) object.Object {
-	function, ok := fn.(*object.Function)
-	if !ok {
+	switch fn := fn.(type) {
+	case *object.Function:
+		new_env := object.NewEnclosedEnviroment(fn.Env)
+		for paramID, p := range fn.Parameters {
+			new_env.Set(p.Value, params[paramID])
+		}
+		evaluated := Eval(fn.Body, new_env)
+		if evaluated, ok := evaluated.(*object.ReturnValue); ok {
+			return evaluated.Value
+		}
+		return evaluated
+
+	case *object.Builtin:
+		if len(params) != 1 {
+			return newError("wrong number of arguments. got=%d, want=1", len(params))
+		}
+		return fn.Fn(params...)
+
+	default:
 		return newError("not a function: %s", fn.Type())
 	}
-	new_env := object.NewEnclosedEnviroment(function.Env)
-	for paramID, p := range function.Parameters {
-		new_env.Set(p.Value, params[paramID])
-	}
-
-	evaluated := Eval(function.Body, new_env)
-	if evaluated, ok := evaluated.(*object.ReturnValue); ok {
-		return evaluated.Value
-	}
-
-	return evaluated
 }
 
 func newError(format string, a ...interface{}) object.Object {
