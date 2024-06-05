@@ -101,7 +101,9 @@ func Eval(node ast.Node, env *object.Enviroment) object.Object {
 			return index
 		}
 		return evalIndexExpression(leftexp, index)
-
+	case *ast.HashExpression:
+		exp := evalHashExpression(node, env)
+		return exp
 	}
 
 	return nil
@@ -118,6 +120,8 @@ func evalIndexExpression(left object.Object, index object.Object) object.Object 
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return evalArrayIndexExpression(left, index)
+	case left.Type() == object.HASH_OBJ:
+		return evalArrayHashExpression(left, index)
 	default:
 		return newError("index operator not supported: %s", left.Type())
 	}
@@ -134,6 +138,30 @@ func evalArrayIndexExpression(array object.Object, index object.Object) object.O
 	return arrayObj.Elements[idx]
 }
 
+func evalArrayHashExpression(hash object.Object, key object.Object) object.Object {
+	HashObj := hash.(*object.Hash)
+	for keyy, val := range HashObj.Pairs {
+		if key.Type() == keyy.Type() {
+			switch keyy.(type) {
+			case *object.Boolean:
+				if keyy.(*object.Boolean).Value == key.(*object.Boolean).Value {
+					return val
+				}
+			case *object.Integer:
+				if keyy.(*object.Integer).Value == key.(*object.Integer).Value {
+					return val
+				}
+			case *object.String:
+				if keyy.(*object.String).Value == key.(*object.String).Value {
+					return val
+				}
+
+			}
+		}
+
+	}
+	return nil
+}
 func evalProgram(program *ast.Program, env *object.Enviroment) object.Object {
 	var result object.Object
 	for _, statement := range program.Statements {
@@ -196,6 +224,28 @@ func evalInfixExpression(op string, right object.Object, left object.Object) obj
 		return newError("unknown operator: %s %s %s", left.Type(), op, right.Type())
 	}
 
+}
+
+func evalHashExpression(exp *ast.HashExpression, env *object.Enviroment) object.Object {
+	pairs := make(map[object.Object]object.Object)
+	for key, val := range exp.Pairs {
+		if key.TokenLiteral() == "IDENTIFIER" {
+			keyy, booll := env.Get(key.(*ast.Identifier).Value)
+			if !booll {
+				return newError("key isn't valid")
+			}
+			vall := Eval(val, env)
+			pairs[keyy] = vall
+
+		} else {
+			keyy := Eval(key, env)
+			vall := Eval(val, env)
+			pairs[keyy] = vall
+
+		}
+
+	}
+	return &object.Hash{Pairs: pairs}
 }
 
 func evalInfixStringExpression(op string, right object.Object, left object.Object) object.Object {
@@ -303,9 +353,6 @@ func applyFunction(fn object.Object, params []object.Object) object.Object {
 		return evaluated
 
 	case *object.Builtin:
-		if len(params) != 1 {
-			return newError("wrong number of arguments. got=%d, want=1", len(params))
-		}
 		return fn.Fn(params...)
 
 	default:

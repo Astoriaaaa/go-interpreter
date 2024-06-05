@@ -17,6 +17,7 @@ const (
 	STRING_OBJ       = "STRING"
 	BUILTIN_OBJ      = "BUILTIN"
 	ARRAY_OBJ        = "ARRAY"
+	HASH_OBJ         = "HASH"
 )
 
 type ObjectType string
@@ -126,5 +127,25 @@ func (a *Array) Inspect() string {
 	out.WriteString(strings.Join(elmts, ", "))
 	out.WriteString("]")
 
+	return out.String()
+}
+
+type Hash struct {
+	Pairs map[Object]Object
+}
+
+func (h *Hash) Type() ObjectType {
+	return HASH_OBJ
+}
+
+func (h *Hash) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("{")
+	pairs := []string{}
+	for key, value := range h.Pairs {
+		pairs = append(pairs, key.Inspect()+":"+value.Inspect())
+	}
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("}")
 	return out.String()
 }

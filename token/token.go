@@ -59,6 +59,7 @@ const (
 	ELSE   = "ELSE"
 	STRING = "STRING"
 
-	LSB = "["
-	RSB = "]"
+	LSB   = "["
+	RSB   = "]"
+	COLON = ":"
 )
